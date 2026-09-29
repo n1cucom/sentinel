@@ -1,0 +1,16 @@
+let lookback = 14d;        // Advanced hunting keeps 30 days; shorter = lighter query
+let calibration = 0.8;     // estimate_data_size runs high; use your pilot ratio when you have it
+let current = Usage
+    | where TimeGenerated >= startofday(ago(lookback)) and TimeGenerated < startofday(now())
+    | where IsBillable == true
+    | summarize GB = sum(Quantity) / 1000. by Day = startofday(TimeGenerated)
+    | extend Source = "Sentinel today";
+let newTables = union withsource=Source
+        DeviceEvents, DeviceProcessEvents, DeviceNetworkEvents,
+        DeviceLogonEvents, DeviceRegistryEvents, DeviceFileEvents
+    | where Timestamp >= startofday(ago(lookback)) and Timestamp < startofday(now())
+    | summarize GB = sum(estimate_data_size(*)) * calibration / 1e9 by Source, Day = startofday(Timestamp);
+union current, newTables
+| project Day, GB, Source
+| order by Day asc
+| render areachart kind=stacked
